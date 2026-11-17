@@ -24,12 +24,17 @@ import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.PrintStream;
 
-import org.jline.jansi.*;
+import org.jline.jansi.Ansi;
 
 import io.dekorate.Logger;
 import io.dekorate.LoggerFactory;
 
 public class AnsiLogger extends LoggerFactory<PrintStream> implements Logger {
+
+  // AnsiConsole.out() installs a never-closed JLine system terminal that races on the tty attributes
+  // (leaving the user's shell without echo, e.g. in parallel Maven builds). Write to System.out directly instead.
+  private static final boolean COLORS = System.console() != null && System.getenv("NO_COLOR") == null
+      && !"dumb".equals(System.getenv("TERM"));
 
   private PrintStream stream;
 
@@ -39,19 +44,19 @@ public class AnsiLogger extends LoggerFactory<PrintStream> implements Logger {
 
   //Should not be used by user code. Only needed for Java SPI.
   public AnsiLogger() {
-    this.stream = AnsiConsole.out();
+    this.stream = System.out;
   }
 
   public AnsiLogger(PrintStream stream) {
     check();
-    this.stream = stream != null ? stream : AnsiConsole.out();
+    this.stream = stream != null ? stream : System.out;
   }
 
   @Override
   public void debug(String message) {
     if (isDebugEnabled()) {
       check();
-      stream.println(ansi().a("[").fg(CYAN).bold().a(Level.DEBUG.name()).reset().a("] ").a(message));
+      stream.println(format(Level.DEBUG, CYAN, message));
     }
   }
 
@@ -59,7 +64,7 @@ public class AnsiLogger extends LoggerFactory<PrintStream> implements Logger {
   public void info(String message) {
     if (isInfoEnabled()) {
       check();
-      stream.println(ansi().a("[").fg(BLUE).bold().a(Level.INFO.name()).reset().a("] ").a(message));
+      stream.println(format(Level.INFO, BLUE, message));
     }
   }
 
@@ -67,7 +72,7 @@ public class AnsiLogger extends LoggerFactory<PrintStream> implements Logger {
   public void warning(String message) {
     if (isWarnEnabled()) {
       check();
-      stream.println(ansi().a("[").fg(MAGENTA).bold().a(Level.WARN.name()).reset().a("] ").a(message));
+      stream.println(format(Level.WARN, MAGENTA, message));
     }
   }
 
@@ -75,8 +80,15 @@ public class AnsiLogger extends LoggerFactory<PrintStream> implements Logger {
   public void error(String message) {
     if (isErrorEnabled()) {
       check();
-      stream.println(ansi().a("[").fg(RED).bold().a(Level.ERROR.name()).reset().a("] ").a(message));
+      stream.println(format(Level.ERROR, RED, message));
     }
+  }
+
+  private static String format(Level level, Ansi.Color color, String message) {
+    if (!COLORS) {
+      return "[" + level.name() + "] " + message;
+    }
+    return Ansi.ansi().a("[").fg(color).bold().a(level.name()).reset().a("] ").a(message).toString();
   }
 
   private void check() {
